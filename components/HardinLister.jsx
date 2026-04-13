@@ -11,7 +11,7 @@ const B = {
   red: "#e05555", blue: "#5b9bd5", amber: "#d4a843", purple: "#6b5bbf",
 };
 
-const EQ_TYPES = ["Circuit Breaker","Transformer","Switchgear","Panelboard","Motor Control Center (MCC)","Disconnect Switch","Bus Duct / Bus Plug","UPS System","PDU","ATS / Transfer Switch","Motor Starter","Fuses","Enclosure"];
+const EQ_TYPES = ["Circuit Breaker","Transformer","Switchgear","Panelboard","Motor Control Center (MCC)","Contactor","Motor Starter","VFD / Drive","Overload Relay","Disconnect Switch","Bus Duct / Bus Plug","UPS System","PDU","ATS / Transfer Switch","Fuses","Enclosure"];
 const MFRS = ["Square D / Schneider","Eaton / Cutler-Hammer","GE / General Electric","Siemens / ITE","ABB","Westinghouse","Federal Pacific (FPE)","Allen-Bradley","Merlin Gerin","Zinsco","Murray","Challenger","Sylvania","Thomas & Betts","Other"];
 const GRADES = [
   { value: "A", label: "Grade A - Excellent" },
@@ -229,14 +229,29 @@ export default function HardinLister() {
   const buildQ = useCallback(()=>{
     const p=[];
     if(form.manufacturer) p.push(form.manufacturer.split(" / ")[0]);
-    if(form.equipment_type) p.push(form.equipment_type.replace(/ *\(.*\)/,""));
-    if(form.catalog_number) p.push(form.catalog_number);
-    else if(form.model_number) p.push(form.model_number);
+    if(form.equipment_type) p.push(form.equipment_type.replace(/ *\(.*\)/,"").replace(/ \/ .*/,""));
+    // Model/catalog is the primary search driver
+    if(form.model_number) p.push(form.model_number);
+    else if(form.catalog_number) p.push(form.catalog_number);
     if(form.amperage_rating) p.push(form.amperage_rating+"A");
     else if(form.kva_rating) p.push(form.kva_rating+"KVA");
-    if(form.voltage_rating) p.push(form.voltage_rating+"V");
+    // Only add voltage if it's a clean number
+    if(form.voltage_rating && /^\d{2,5}$/.test(form.voltage_rating.trim())) p.push(form.voltage_rating+"V");
     return p.join(" ");
   },[form]);
+
+  // Build query directly from scan data (doesn't depend on form state settling)
+  const buildQFromScan = (d) => {
+    const p=[];
+    const v = (x) => (x && x !== "null" && x !== "N/A") ? String(x).trim() : null;
+    if(v(d.manufacturer)) p.push(d.manufacturer.split(" / ")[0].replace(/telemecanique/i,"Schneider"));
+    if(v(d.equipment_type)) p.push(d.equipment_type.replace(/ *\(.*\)/,"").replace(/ \/ .*/,""));
+    if(v(d.model_number)) p.push(d.model_number);
+    else if(v(d.catalog_number)) p.push(d.catalog_number);
+    if(v(d.amperage_rating)) p.push(d.amperage_rating+"A");
+    else if(v(d.kva_rating)) p.push(d.kva_rating+"KVA");
+    return p.join(" ");
+  };
 
   const fetchEbay=async(qOverride)=>{const q=qOverride||buildQ();if(!q)return;setLoading(p=>({...p,ebay:true}));setErrors(p=>({...p,ebay:null}));try{const r=await fetch(FN("ebay-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});const d=await r.json();if(d.error)setErrors(p=>({...p,ebay:d.error}));setEbayComps(d);}catch(e){setErrors(p=>({...p,ebay:String(e)}));}setLoading(p=>({...p,ebay:false}));};
   const fetchWeb=async(qOverride)=>{const q=qOverride||buildQ();if(!q)return;setLoading(p=>({...p,web:true}));setErrors(p=>({...p,web:null}));try{const r=await fetch(FN("web-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,num:10})});const d=await r.json();if(d.error)setErrors(p=>({...p,web:d.error}));setWebComps(d);}catch(e){setErrors(p=>({...p,web:String(e)}));}setLoading(p=>({...p,web:false}));};
@@ -259,12 +274,17 @@ export default function HardinLister() {
       "federal pacific":"Federal Pacific (FPE)","fpe":"Federal Pacific (FPE)","fed pac":"Federal Pacific (FPE)",
       "allen-bradley":"Allen-Bradley","allen bradley":"Allen-Bradley","a-b":"Allen-Bradley","rockwell":"Allen-Bradley",
       "merlin gerin":"Merlin Gerin","merlin":"Merlin Gerin",
+      "schneider electric":"Square D / Schneider","telemecanique":"Square D / Schneider","telemecan":"Square D / Schneider",
       "zinsco":"Zinsco","sylvania":"Sylvania","murray":"Murray","challenger":"Challenger",
       "thomas":"Thomas & Betts","t&b":"Thomas & Betts",
     };
     const eqm={
       "transformer":"Transformer","xfmr":"Transformer","power-dry":"Transformer","sorgel":"Transformer",
       "circuit breaker":"Circuit Breaker","breaker":"Circuit Breaker",
+      "contactor":"Contactor","lc1d":"Contactor","lc1f":"Contactor","lc2d":"Contactor",
+      "vfd":"VFD / Drive","drive":"VFD / Drive","inverter":"VFD / Drive","variable frequency":"VFD / Drive",
+      "overload":"Overload Relay","thermal relay":"Overload Relay",
+      "motor starter":"Motor Starter","starter":"Motor Starter","combination starter":"Motor Starter",
       "switchgear":"Switchgear","switchboard":"Switchgear",
       "panelboard":"Panelboard","panel board":"Panelboard","loadcenter":"Panelboard",
       "motor control center":"Motor Control Center (MCC)","mcc":"Motor Control Center (MCC)",
@@ -329,23 +349,7 @@ export default function HardinLister() {
   // Auto-fetch comps after scan populates form
   useEffect(() => {
     if (!scanResult) return;
-    // Build query directly from scan data (don't rely on form state which may be stale)
-    const d = scanResult;
-    const parts = [];
-    if (d.manufacturer) parts.push(String(d.manufacturer).split("/")[0].trim());
-    if (d.equipment_type) parts.push(String(d.equipment_type));
-    if (d.catalog_number && d.catalog_number !== "null") parts.push(String(d.catalog_number));
-    else if (d.model_number && d.model_number !== "null") parts.push(String(d.model_number));
-    if (d.amperage_rating && d.amperage_rating !== "null") parts.push(String(d.amperage_rating).replace(/\s*A$/i,"") + "A");
-    else if (d.frame_size && d.frame_size !== "null") parts.push(String(d.frame_size).replace(/\s*A$/i,"") + "A");
-    else if (d.kva_rating && d.kva_rating !== "null") parts.push(String(d.kva_rating) + "KVA");
-    if (d.voltage_rating && d.voltage_rating !== "null") {
-      const vStr = String(d.voltage_rating);
-      // Use the most common voltage if multiple listed
-      const firstV = vStr.split(/[/,]/)[0].replace(/[^\d]/g,"");
-      if (firstV) parts.push(firstV + "V");
-    }
-    const q = parts.join(" ");
+    const q = buildQFromScan(scanResult);
     if (q) {
       fetchEbay(q);
       fetchWeb(q);
