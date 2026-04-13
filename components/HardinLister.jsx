@@ -23,6 +23,23 @@ const GRADES = [
 function copyText(t) { navigator.clipboard.writeText(t).catch(() => { const a=document.createElement("textarea"); a.value=t; document.body.appendChild(a); a.select(); document.execCommand("copy"); document.body.removeChild(a); }); }
 function stripHtml(h) { const d=document.createElement("div"); d.innerHTML=h; return d.textContent||""; }
 
+function csvEscape(v) { if (v==null) return ""; const s=String(v); return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s; }
+function downloadCSV(rows, filename) {
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  const lines = [cols.map(csvEscape).join(",")];
+  rows.forEach(r => lines.push(cols.map(c => csvEscape(r[c])).join(",")));
+  const blob = new Blob(["\uFEFF"+lines.join("\n")], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function DlBtn({onClick,disabled,children}) {
+  return <button onClick={onClick} disabled={disabled} style={{padding:"6px 14px",background:disabled?B.border:"#2a5a2e",color:disabled?B.muted:"#fff",border:`1px solid ${disabled?B.border:B.green}`,borderRadius:4,fontSize:12,fontWeight:600,cursor:disabled?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:5}}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    {children}
+  </button>;
+}
+
 const Logo = ({size=36}) => (
   <svg width={size} height={size} viewBox="0 0 212 191" fill="none"><path d="M113.977 155.659C106.789 156.563 99.7953 156.218 93.1887 154.777C92.0481 154.518 91.4671 153.227 92.0266 152.194L98.0737 141.134C98.418 140.489 99.1497 140.144 99.8814 140.23C101.904 140.51 103.992 140.661 106.101 140.661C131.236 140.661 151.702 120.197 151.702 95.0634C151.702 89.813 150.798 84.7562 149.162 80.0652L124.5 125.34C124.199 125.899 123.618 126.222 122.994 126.222H109.243C107.951 126.222 107.134 124.845 107.736 123.704L116.28 108.039C116.602 107.436 116.172 106.726 115.483 106.726H90.1328C89.724 106.726 89.3581 106.942 89.1645 107.307L77.2209 129.234L70.313 141.801C69.7534 142.834 68.3762 143.135 67.4508 142.382C52.4083 130.052 43.3054 110.664 45.2637 89.2965C47.9752 59.9887 71.8839 36.4692 101.237 34.1883C109.587 33.5427 117.614 34.5756 125.038 37.0071C126.286 37.416 126.824 38.8792 126.2 40.0412L120.67 50.1118C120.196 50.994 119.185 51.3814 118.216 51.1231C111.61 49.2941 104.422 48.9068 96.9762 50.3915C78.0601 54.1572 63.3835 69.8871 60.8872 89.0168C59.553 99.2595 61.6619 108.964 66.2026 117.141L93.3824 67.2403C93.5976 66.8315 94.0495 66.5732 94.5014 66.5732H109.221C110.189 66.5732 110.814 67.6061 110.34 68.4669L98.8269 89.6193C98.418 90.3509 98.956 91.2332 99.7953 91.2332H124.931C125.253 91.2332 125.555 91.061 125.727 90.7598L139.995 64.5721L139.952 64.529L146.903 51.7687C147.29 51.0586 148.258 50.9079 148.839 51.4674C161.386 63.7544 168.681 81.3993 166.959 100.658C164.441 128.933 142.19 152.108 114.02 155.659H113.977Z" fill={B.green}/></svg>
 );
@@ -38,7 +55,7 @@ function CompRow({comp,source}) {
     {comp.image&&<img src={comp.image} alt="" style={{width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0}}/>}
     <div style={{flex:1,minWidth:0}}>
       <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:B.text}}>{comp.title}</div>
-      <div style={{fontSize:11,color:B.muted}}>{source==="ebay"?(comp.seller||"eBay"):(comp.displayLink||"Web")}{comp.condition&&` \u00B7 ${comp.condition}`}</div>
+      <div style={{fontSize:11,color:B.muted}}>{source==="ebay"?(comp.seller||"eBay"):(comp.displayLink||"Web")}{comp.condition&&` · ${comp.condition}`}</div>
     </div>
     <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600,color:B.accent,flexShrink:0}}>{comp.price?`$${Number(comp.price).toLocaleString()}`:"Quote"}</div>
     <a href={source==="ebay"?comp.itemUrl:comp.link} target="_blank" rel="noopener noreferrer" style={{color:B.blue,fontSize:11,flexShrink:0,textDecoration:"none"}}>View</a>
@@ -85,7 +102,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       const d = await r.json();
       if (d.error) { setStatus(`Error: ${d.error}`); return; }
       onNameplate(d);
-      setStatus("\u2713 Nameplate scanned. Form auto-filled.");
+      setStatus("✓ Nameplate scanned. Form auto-filled.");
       setTimeout(() => { setMode(null); setStatus(null); setPreview(null); }, 2500);
     } catch(e) { setStatus(`Error: ${e.message}`); }
   };
@@ -99,7 +116,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       const res = await det.detect(src);
       if (!res.length) { setStatus("No code detected. Try again or adjust angle."); return; }
       onBarcode(res[0].rawValue, res[0].format);
-      setStatus(`\u2713 ${res[0].format}: ${res[0].rawValue}`);
+      setStatus(`✓ ${res[0].format}: ${res[0].rawValue}`);
       setTimeout(() => { setMode(null); setStatus(null); setPreview(null); }, 2500);
     } catch(e) { setStatus(`Error: ${e.message}`); }
   };
@@ -133,7 +150,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
         if (!videoRef.current||!streamRef.current) return;
         try {
           const r = await det.detect(videoRef.current);
-          if (r.length) { stopCam(); onBarcode(r[0].rawValue,r[0].format); setStatus(`\u2713 ${r[0].format}: ${r[0].rawValue}`); setTimeout(()=>{setMode(null);setStatus(null);},2500); return; }
+          if (r.length) { stopCam(); onBarcode(r[0].rawValue,r[0].format); setStatus(`✓ ${r[0].format}: ${r[0].rawValue}`); setTimeout(()=>{setMode(null);setStatus(null);},2500); return; }
         } catch{}
         animRef.current = requestAnimationFrame(tick);
       };
@@ -179,7 +196,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       </div>
     </div>)}
     {preview&&mode==="nameplate"&&<div style={{borderRadius:8,overflow:"hidden",marginBottom:8}}><img src={preview} alt="" style={{width:"100%",maxHeight:200,objectFit:"contain",background:"#000",display:"block"}}/></div>}
-    {status&&<div style={{padding:"8px 14px",borderRadius:6,fontSize:13,fontWeight:500,background:status.startsWith("\u2713")?`${B.green}22`:status.startsWith("Error")?`${B.red}22`:`${B.amber}22`,color:status.startsWith("\u2713")?B.accent:status.startsWith("Error")?B.red:B.amber,border:`1px solid ${status.startsWith("\u2713")?B.green:status.startsWith("Error")?B.red:B.amber}33`}}>{status}</div>}
+    {status&&<div style={{padding:"8px 14px",borderRadius:6,fontSize:13,fontWeight:500,background:status.startsWith("✓")?`${B.green}22`:status.startsWith("Error")?`${B.red}22`:`${B.amber}22`,color:status.startsWith("✓")?B.accent:status.startsWith("Error")?B.red:B.amber,border:`1px solid ${status.startsWith("✓")?B.green:status.startsWith("Error")?B.red:B.amber}33`}}>{status}</div>}
   </div>);
 }
 
@@ -212,7 +229,7 @@ export default function HardinLister() {
   const genListing=async()=>{if(!form.equipment_type)return;setLoading(p=>({...p,listing:true}));setErrors(p=>({...p,listing:null}));try{const cp=ebayComps?.stats?{low:ebayComps.stats.low,median:ebayComps.stats.median,high:ebayComps.stats.high,count:ebayComps.stats.count}:null;const r=await fetch(FN("generate-listing"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,comp_prices:cp})});const d=await r.json();if(d.error)setErrors(p=>({...p,listing:d.error}));else setListing(d);}catch(e){setErrors(p=>({...p,listing:String(e)}));}setLoading(p=>({...p,listing:false}));};
 
   const handleCopy=(t,id)=>{copyText(t);setCopied(id);setTimeout(()=>setCopied(null),2000);};
-  const CopyBtn=({text,id,label})=>(<button onClick={()=>handleCopy(text,id)} style={{padding:"4px 10px",background:copied===id?B.green:B.border,color:"#fff",border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>{copied===id?"\u2713 Copied":label||"Copy"}</button>);
+  const CopyBtn=({text,id,label})=>(<button onClick={()=>handleCopy(text,id)} style={{padding:"4px 10px",background:copied===id?B.green:B.border,color:"#fff",border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>{copied===id?"✓ Copied":label||"Copy"}</button>);
 
   const handleNameplate = (d) => {
     const mfr={"square d":"Square D / Schneider","schneider":"Square D / Schneider","eaton":"Eaton / Cutler-Hammer","cutler":"Eaton / Cutler-Hammer","ge":"GE / General Electric","general electric":"GE / General Electric","siemens":"Siemens / ITE","ite":"Siemens / ITE","abb":"ABB","westinghouse":"Westinghouse","federal pacific":"Federal Pacific (FPE)","fpe":"Federal Pacific (FPE)","allen-bradley":"Allen-Bradley","zinsco":"Zinsco","murray":"Murray","challenger":"Challenger"};
@@ -252,6 +269,73 @@ export default function HardinLister() {
   const sq=buildQ();
   const hasEq=form.equipment_type&&(form.manufacturer||form.catalog_number);
 
+  const ts = () => new Date().toISOString().slice(0,10);
+  const eqLabel = () => [form.manufacturer?.split(" / ")[0],form.equipment_type,form.catalog_number||form.model_number].filter(Boolean).join("_").replace(/\s+/g,"_");
+
+  const exportEbayCSV = () => {
+    if (!ebayComps?.comps?.length) return;
+    downloadCSV(ebayComps.comps.map(c=>({Source:"eBay",Title:c.title,Price:c.price||"",Condition:c.condition||"",Seller:c.seller||"",URL:c.itemUrl||""})), `Hardin_eBay_Comps_${eqLabel()}_${ts()}.csv`);
+  };
+  const exportWebCSV = () => {
+    if (!webComps?.comps?.length) return;
+    downloadCSV(webComps.comps.map(c=>({Source:c.displayLink||"Dealer",Title:c.title,Price:c.price||"Quote",URL:c.link||"",Snippet:c.snippet||""})), `Hardin_Dealer_Comps_${eqLabel()}_${ts()}.csv`);
+  };
+  const exportFullReport = () => {
+    const rows = [];
+    // Equipment info row
+    rows.push({Section:"Equipment",Field:"Type",Value:form.equipment_type});
+    rows.push({Section:"Equipment",Field:"Manufacturer",Value:form.manufacturer});
+    rows.push({Section:"Equipment",Field:"Model",Value:form.model_number});
+    rows.push({Section:"Equipment",Field:"Catalog #",Value:form.catalog_number});
+    rows.push({Section:"Equipment",Field:"Serial #",Value:form.serial_number});
+    rows.push({Section:"Equipment",Field:"Voltage",Value:form.voltage_rating});
+    rows.push({Section:"Equipment",Field:"Amperage",Value:form.amperage_rating});
+    rows.push({Section:"Equipment",Field:"KVA",Value:form.kva_rating});
+    rows.push({Section:"Equipment",Field:"Grade",Value:form.grade});
+    rows.push({Section:"Equipment",Field:"Condition Notes",Value:form.condition_notes});
+    rows.push({Section:"",Field:"",Value:""});
+    // eBay stats
+    if (ebayComps?.stats) {
+      rows.push({Section:"eBay Stats",Field:"Count",Value:ebayComps.stats.count});
+      rows.push({Section:"eBay Stats",Field:"Low",Value:ebayComps.stats.low});
+      rows.push({Section:"eBay Stats",Field:"Median",Value:ebayComps.stats.median});
+      rows.push({Section:"eBay Stats",Field:"Average",Value:ebayComps.stats.avg});
+      rows.push({Section:"eBay Stats",Field:"High",Value:ebayComps.stats.high});
+    }
+    // Dealer stats
+    if (webComps?.stats) {
+      rows.push({Section:"Dealer Stats",Field:"Count",Value:webComps.stats.count});
+      rows.push({Section:"Dealer Stats",Field:"Low",Value:webComps.stats.low});
+      rows.push({Section:"Dealer Stats",Field:"Median",Value:webComps.stats.median});
+      rows.push({Section:"Dealer Stats",Field:"High",Value:webComps.stats.high});
+    }
+    // AI pricing
+    if (listing?.suggested_price) {
+      rows.push({Section:"AI Suggested",Field:"Low",Value:listing.suggested_price.low});
+      rows.push({Section:"AI Suggested",Field:"Target",Value:listing.suggested_price.mid});
+      rows.push({Section:"AI Suggested",Field:"High",Value:listing.suggested_price.high});
+      rows.push({Section:"AI Suggested",Field:"Reasoning",Value:listing.suggested_price.reasoning||""});
+    }
+    // Recommended price
+    const ps=[ebayComps?.stats?.median,listing?.suggested_price?.mid,webComps?.stats?.median].filter(Boolean);
+    if(ps.length){const avg=ps.reduce((a,b)=>a+b,0)/ps.length;const m={A:1.0,B:0.75,C:0.45,D:0.15}[form.grade]||0.75;rows.push({Section:"Recommended",Field:"List Price",Value:Math.round(avg*m)});}
+    rows.push({Section:"",Field:"",Value:""});
+    // Listing content
+    if (listing) {
+      rows.push({Section:"Listing",Field:"Title",Value:listing.title});
+      rows.push({Section:"Listing",Field:"Subtitle",Value:listing.subtitle||""});
+      rows.push({Section:"Listing",Field:"Description (text)",Value:stripHtml(listing.description_html||"")});
+      if(listing.search_keywords) rows.push({Section:"Listing",Field:"Keywords",Value:listing.search_keywords.join(", ")});
+      if(listing.item_specifics) Object.entries(listing.item_specifics).filter(([,v])=>v).forEach(([k,v])=>rows.push({Section:"Item Specifics",Field:k,Value:v}));
+    }
+    rows.push({Section:"",Field:"",Value:""});
+    // eBay comp details
+    (ebayComps?.comps||[]).forEach((c,i)=>rows.push({Section:`eBay Comp ${i+1}`,Field:c.title,Value:c.price||"N/A"}));
+    // Dealer comp details
+    (webComps?.comps||[]).forEach((c,i)=>rows.push({Section:`Dealer Comp ${i+1}`,Field:c.title,Value:c.price||"Quote"}));
+    downloadCSV(rows, `Hardin_Full_Report_${eqLabel()}_${ts()}.csv`);
+  };
+
   return (
     <div style={{fontFamily:"'Segoe UI',-apple-system,sans-serif",background:B.bg,color:B.text,minHeight:"100vh",maxWidth:920,margin:"0 auto"}}>
       <div style={{padding:"14px 20px",borderBottom:`2px solid ${B.green}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:`linear-gradient(135deg,${B.bg} 0%,${B.card} 100%)`}}>
@@ -269,7 +353,7 @@ export default function HardinLister() {
         <TabB active={tab==="entry"} onClick={()=>setTab("entry")}>Equipment</TabB>
         <TabB active={tab==="comps"} onClick={()=>setTab("comps")} badge={ebayComps?.comps?.length||0}>eBay Comps</TabB>
         <TabB active={tab==="web"} onClick={()=>setTab("web")} badge={webComps?.comps?.length||0}>Dealer Comps</TabB>
-        <TabB active={tab==="listing"} onClick={()=>setTab("listing")}>{listing?"\u2713 ":""}Listing</TabB>
+        <TabB active={tab==="listing"} onClick={()=>setTab("listing")}>{listing?"✓ ":""}Listing</TabB>
         <TabB active={tab==="pricing"} onClick={()=>setTab("pricing")}>Pricing</TabB>
       </div>
 
@@ -304,7 +388,7 @@ export default function HardinLister() {
         </div>)}
 
         {tab==="comps"&&(<div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>eBay Market Comps</h3><ActBtn onClick={fetchEbay} disabled={!hasEq||loading.ebay} color={B.green} small>{loading.ebay?"...":"Refresh"}</ActBtn></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>eBay Market Comps</h3><div style={{display:"flex",gap:6}}><DlBtn onClick={exportEbayCSV} disabled={!ebayComps?.comps?.length}>CSV</DlBtn><ActBtn onClick={fetchEbay} disabled={!hasEq||loading.ebay} color={B.green} small>{loading.ebay?"...":"Refresh"}</ActBtn></div></div>
           {errors.ebay&&<div style={{padding:12,background:"#2d1b1b",borderRadius:6,color:B.red,fontSize:12,marginBottom:12}}>{errors.ebay}</div>}
           {ebayComps?.stats&&<div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}><PriceTag label="Low" value={ebayComps.stats.low} color={B.red}/><PriceTag label="Median" value={ebayComps.stats.median} color={B.amber}/><PriceTag label="Avg" value={ebayComps.stats.avg} color={B.accent}/><PriceTag label="High" value={ebayComps.stats.high} color={B.blue}/><div style={{textAlign:"center",padding:"8px 12px",background:B.card,borderRadius:6,border:`1px solid ${B.border}`}}><div style={{fontSize:10,color:B.muted,textTransform:"uppercase"}}>Ct</div><div style={{fontSize:20,fontWeight:700,color:B.text}}>{ebayComps.stats.count}</div></div></div>}
           {ebayComps?.comps?.length>0?<div style={{background:B.card,borderRadius:8,padding:12,border:`1px solid ${B.border}`}}>{ebayComps.comps.map((c,i)=><CompRow key={i} comp={c} source="ebay"/>)}</div>:!loading.ebay?<div style={{padding:40,textAlign:"center",color:B.muted}}>Enter equipment and Pull Comps</div>:null}
@@ -312,7 +396,7 @@ export default function HardinLister() {
         </div>)}
 
         {tab==="web"&&(<div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>Dealer Site Comps</h3><ActBtn onClick={fetchWeb} disabled={!hasEq||loading.web} color={B.green} small>{loading.web?"...":"Refresh"}</ActBtn></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>Dealer Site Comps</h3><div style={{display:"flex",gap:6}}><DlBtn onClick={exportWebCSV} disabled={!webComps?.comps?.length}>CSV</DlBtn><ActBtn onClick={fetchWeb} disabled={!hasEq||loading.web} color={B.green} small>{loading.web?"...":"Refresh"}</ActBtn></div></div>
           {errors.web&&<div style={{padding:12,background:"#2d1b1b",borderRadius:6,color:B.red,fontSize:12,marginBottom:12}}>{errors.web}</div>}
           {webComps?.comps?.length>0?<div style={{background:B.card,borderRadius:8,padding:12,border:`1px solid ${B.border}`}}>{webComps.comps.map((c,i)=><CompRow key={i} comp={c} source="web"/>)}</div>:!loading.web?<div style={{padding:40,textAlign:"center",color:B.muted}}>{errors.web?"Add GOOGLE_CSE_API_KEY to Supabase":"Enter equipment and Pull Comps"}</div>:null}
           {loading.web&&<div style={{padding:40,textAlign:"center",color:B.green}}>Searching dealers...</div>}
@@ -344,7 +428,7 @@ export default function HardinLister() {
         </div>)}
 
         {tab==="pricing"&&(<div>
-          <h3 style={{margin:"0 0 16px",fontSize:16}}>Price Analysis: Grade {form.grade}</h3>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>Price Analysis: Grade {form.grade}</h3><DlBtn onClick={exportFullReport} disabled={!ebayComps?.stats&&!listing}>Full Report CSV</DlBtn></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
             {[{t:"eBay",c:B.green,d:ebayComps?.stats,lk:"ebay",f:["low","median","high"],x:ebayComps?.stats?.count?`${ebayComps.stats.count} listings`:null},{t:"Dealers",c:B.purple,d:webComps?.stats,lk:"web",f:["low","median","high"],x:webComps?.stats?.count?`${webComps.stats.count} priced`:null},{t:"AI",c:B.accent,d:listing?.suggested_price,lk:"listing",f:["low","mid","high"]}].map(col=><div key={col.t} style={{background:B.card,borderRadius:8,padding:16,border:`1px solid ${B.border}`}}>
               <div style={{fontSize:12,color:col.c,fontWeight:600,marginBottom:12}}>{col.t}</div>
@@ -360,7 +444,7 @@ export default function HardinLister() {
           </div>}
         </div>)}
       </div>
-      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Electrical Group \u00B7 Dallas, TX \u00B7 Powered by WES Platform</div>
+      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Electrical Group · Dallas, TX · Powered by WES Platform</div>
     </div>
   );
 }
