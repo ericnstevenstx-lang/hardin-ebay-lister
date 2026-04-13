@@ -210,6 +210,7 @@ export default function HardinLister() {
   const [webComps, setWebComps] = useState(null);
   const [listing, setListing] = useState(null);
   const [errors, setErrors] = useState({});
+  const [scanResult, setScanResult] = useState(null);
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
 
   const buildQ = useCallback(()=>{
@@ -232,31 +233,73 @@ export default function HardinLister() {
   const CopyBtn=({text,id,label})=>(<button onClick={()=>handleCopy(text,id)} style={{padding:"4px 10px",background:copied===id?B.green:B.border,color:"#fff",border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>{copied===id?"✓ Copied":label||"Copy"}</button>);
 
   const handleNameplate = (d) => {
-    const mfr={"square d":"Square D / Schneider","schneider":"Square D / Schneider","eaton":"Eaton / Cutler-Hammer","cutler":"Eaton / Cutler-Hammer","ge":"GE / General Electric","general electric":"GE / General Electric","siemens":"Siemens / ITE","ite":"Siemens / ITE","abb":"ABB","westinghouse":"Westinghouse","federal pacific":"Federal Pacific (FPE)","fpe":"Federal Pacific (FPE)","allen-bradley":"Allen-Bradley","zinsco":"Zinsco","murray":"Murray","challenger":"Challenger"};
-    const eqm={"transformer":"Transformer","circuit breaker":"Circuit Breaker","switchgear":"Switchgear","panelboard":"Panelboard","motor control center":"Motor Control Center (MCC)","mcc":"Motor Control Center (MCC)","disconnect":"Disconnect Switch","bus duct":"Bus Duct / Bus Plug","ups":"UPS System","pdu":"PDU","transfer switch":"ATS / Transfer Switch"};
+    // Save raw scan result for display
+    setScanResult(d);
+    // Expanded manufacturer map
+    const mfr={
+      "square d":"Square D / Schneider","schneider":"Square D / Schneider","sqd":"Square D / Schneider",
+      "eaton":"Eaton / Cutler-Hammer","cutler":"Eaton / Cutler-Hammer","cutler-hammer":"Eaton / Cutler-Hammer","cutler hammer":"Eaton / Cutler-Hammer","ch ":"Eaton / Cutler-Hammer",
+      "general electric":"GE / General Electric","ge ":"GE / General Electric","g.e.":"GE / General Electric",
+      "siemens":"Siemens / ITE","ite":"Siemens / ITE","ite-":"Siemens / ITE",
+      "abb":"ABB","asea":"ABB","bbc":"ABB",
+      "westinghouse":"Westinghouse","wh ":"Westinghouse",
+      "federal pacific":"Federal Pacific (FPE)","fpe":"Federal Pacific (FPE)","fed pac":"Federal Pacific (FPE)",
+      "allen-bradley":"Allen-Bradley","allen bradley":"Allen-Bradley","a-b":"Allen-Bradley","rockwell":"Allen-Bradley",
+      "merlin gerin":"Merlin Gerin","merlin":"Merlin Gerin",
+      "zinsco":"Zinsco","sylvania":"Sylvania","murray":"Murray","challenger":"Challenger",
+      "thomas":"Thomas & Betts","t&b":"Thomas & Betts",
+    };
+    const eqm={
+      "transformer":"Transformer","xfmr":"Transformer","power-dry":"Transformer","sorgel":"Transformer",
+      "circuit breaker":"Circuit Breaker","breaker":"Circuit Breaker",
+      "switchgear":"Switchgear","switchboard":"Switchgear",
+      "panelboard":"Panelboard","panel board":"Panelboard","loadcenter":"Panelboard",
+      "motor control center":"Motor Control Center (MCC)","mcc":"Motor Control Center (MCC)",
+      "disconnect":"Disconnect Switch","safety switch":"Disconnect Switch",
+      "bus duct":"Bus Duct / Bus Plug","busway":"Bus Duct / Bus Plug","bus plug":"Bus Duct / Bus Plug",
+      "ups":"UPS System","uninterruptible":"UPS System",
+      "pdu":"PDU","power distribution":"PDU",
+      "transfer switch":"ATS / Transfer Switch","ats":"ATS / Transfer Switch",
+      "motor starter":"Motor Starter","starter":"Motor Starter",
+    };
+    // Helper: treat "null" string as null
+    const v = (x) => (x && x !== "null" && x !== "N/A" && x !== "n/a") ? String(x).trim() : null;
     setForm(prev=>{
       const n={...prev};
-      if(d.equipment_type){const l=d.equipment_type.toLowerCase();for(const[k,v]of Object.entries(eqm)){if(l.includes(k)){n.equipment_type=v;break;}}}
-      if(d.manufacturer){const l=d.manufacturer.toLowerCase();let ok=false;for(const[k,v]of Object.entries(mfr)){if(l.includes(k)){n.manufacturer=v;ok=true;break;}}if(!ok)n.manufacturer="Other";}
-      if(d.serial_number)n.serial_number=d.serial_number;
-      if(d.model_number)n.model_number=d.model_number;
-      if(d.catalog_number)n.catalog_number=d.catalog_number;
-      if(d.voltage_rating)n.voltage_rating=d.voltage_rating;
-      if(d.voltage_secondary)n.voltage_secondary=d.voltage_secondary;
-      if(d.amperage_rating)n.amperage_rating=d.amperage_rating;
-      if(d.kva_rating)n.kva_rating=String(d.kva_rating);
-      if(d.phase)n.phase=String(d.phase);
-      if(d.frequency)n.frequency=String(d.frequency);
-      if(d.year_manufactured)n.year_manufactured=String(d.year_manufactured);
-      if(d.weight_lbs)n.weight_lbs=String(d.weight_lbs);
-      if(d.frame_size)n.frame_size=String(d.frame_size);
-      if(d.trip_rating)n.trip_rating=String(d.trip_rating);
-      if(d.interrupting_rating)n.interrupting_rating=String(d.interrupting_rating);
-      if(d.breaker_type)n.breaker_type=d.breaker_type;
-      if(d.winding_material)n.winding_material=d.winding_material;
-      if(d.cooling_class)n.cooling_class=d.cooling_class;
-      if(d.liquid_type)n.liquid_type=d.liquid_type;
-      if(d.bus_rating)n.bus_rating=String(d.bus_rating);
+      // Equipment type with fallback
+      if(v(d.equipment_type)){
+        const l=d.equipment_type.toLowerCase();
+        let found=false;
+        for(const[k,val]of Object.entries(eqm)){if(l.includes(k)){n.equipment_type=val;found=true;break;}}
+        if(!found) n.equipment_type=d.equipment_type; // Use raw value as fallback
+      }
+      // Manufacturer with fallback
+      if(v(d.manufacturer)){
+        const l=d.manufacturer.toLowerCase();
+        let found=false;
+        for(const[k,val]of Object.entries(mfr)){if(l.includes(k)){n.manufacturer=val;found=true;break;}}
+        if(!found) n.manufacturer="Other";
+      }
+      // Direct fields
+      if(v(d.serial_number)) n.serial_number=v(d.serial_number);
+      if(v(d.model_number)) n.model_number=v(d.model_number);
+      if(v(d.catalog_number)) n.catalog_number=v(d.catalog_number);
+      if(v(d.voltage_rating)) n.voltage_rating=v(d.voltage_rating);
+      if(v(d.voltage_secondary)) n.voltage_secondary=v(d.voltage_secondary);
+      if(v(d.amperage_rating)) n.amperage_rating=v(d.amperage_rating);
+      if(v(d.kva_rating)) n.kva_rating=v(d.kva_rating);
+      if(v(d.phase)) n.phase=v(d.phase);
+      if(v(d.frequency)) n.frequency=v(d.frequency);
+      if(v(d.year_manufactured)) n.year_manufactured=v(d.year_manufactured);
+      if(v(d.weight_lbs)) n.weight_lbs=v(d.weight_lbs);
+      if(v(d.frame_size)) n.frame_size=v(d.frame_size);
+      if(v(d.trip_rating)) n.trip_rating=v(d.trip_rating);
+      if(v(d.interrupting_rating)) n.interrupting_rating=v(d.interrupting_rating);
+      if(v(d.breaker_type)) n.breaker_type=v(d.breaker_type);
+      if(v(d.winding_material)) n.winding_material=v(d.winding_material);
+      if(v(d.cooling_class)) n.cooling_class=v(d.cooling_class);
+      if(v(d.liquid_type)) n.liquid_type=v(d.liquid_type);
+      if(v(d.bus_rating)) n.bus_rating=v(d.bus_rating);
       return n;
     });
   };
@@ -360,6 +403,20 @@ export default function HardinLister() {
       <div style={{padding:20}}>
         {tab==="entry"&&(<div>
           <ScannerPanel onNameplate={handleNameplate} onBarcode={handleBarcode}/>
+          {scanResult&&<div style={{marginBottom:16,background:B.card,borderRadius:8,padding:12,border:`1px solid ${B.green}44`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:12,fontWeight:600,color:B.accent}}>Scan Results (raw OCR data)</span>
+              <button onClick={()=>setScanResult(null)} style={{padding:"3px 8px",background:B.border,color:B.muted,border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>Dismiss</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:12}}>
+              {Object.entries(scanResult).filter(([,val])=>val&&val!=="null").map(([key,val])=>(
+                <div key={key} style={{display:"flex",gap:6}}>
+                  <span style={{color:B.muted,minWidth:100}}>{key}:</span>
+                  <span style={{color:B.text,fontFamily:"'JetBrains Mono',monospace",fontSize:11}}>{String(val)}</span>
+                </div>
+              ))}
+            </div>
+          </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Sel label="Equipment Type" value={form.equipment_type} onChange={v=>sf("equipment_type",v)} options={EQ_TYPES} style={{gridColumn:"1 / -1"}}/>
             <Sel label="Manufacturer" value={form.manufacturer} onChange={v=>sf("manufacturer",v)} options={MFRS}/>
