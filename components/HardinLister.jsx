@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 const SUPABASE_URL = "https://ulyycjtrshpsjpvbztkr.supabase.co";
 const FN = (name) => `${SUPABASE_URL}/functions/v1/${name}`;
@@ -138,12 +138,14 @@ function ScannerPanel({ onNameplate, onBarcode }) {
     e.target.value="";
   };
 
-  const startLive = async () => {
+  const startLive = useCallback(async () => {
+    if (!videoRef.current) return;
     try {
       const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}}});
       streamRef.current = s;
-      if (videoRef.current) { videoRef.current.srcObject=s; videoRef.current.play(); }
-      if (!('BarcodeDetector' in window)) { setStatus("Live scan needs Chrome/Edge. Use photo."); return; }
+      videoRef.current.srcObject = s;
+      await videoRef.current.play();
+      if (!('BarcodeDetector' in window)) { setStatus("Live scan needs Chrome/Edge. Use photo button below."); return; }
       const fmts = mode==="qr" ? ["qr_code"] : ["code_128","code_39","ean_13","ean_8","upc_a","upc_e","itf","codabar","data_matrix","qr_code"];
       const det = new BarcodeDetector({formats:fmts});
       const tick = async () => {
@@ -154,16 +156,27 @@ function ScannerPanel({ onNameplate, onBarcode }) {
         } catch{}
         animRef.current = requestAnimationFrame(tick);
       };
-      videoRef.current.onloadeddata = () => { animRef.current=requestAnimationFrame(tick); };
-    } catch(e) { setStatus(`Camera: ${e.message}. Use photo.`); }
-  };
+      animRef.current = requestAnimationFrame(tick);
+    } catch(e) { setStatus(`Camera: ${e.message}. Use photo button.`); }
+  }, [mode, stopCam, onBarcode]);
+
+  // Start camera when video element mounts (via ref callback)
+  const videoRefCb = useCallback((node) => {
+    videoRef.current = node;
+    if (node && (mode === "barcode" || mode === "qr") && !streamRef.current) {
+      startLive();
+    }
+  }, [mode, startLive]);
+
+  // Cleanup on unmount or mode change
+  useEffect(() => { return () => stopCam(); }, [mode, stopCam]);
 
   const go = (m) => {
     stopCam(); setPreview(null); setStatus(null);
     if (mode===m) { setMode(null); return; }
     setMode(m);
     if (m==="nameplate") { setTimeout(()=>fileRef.current?.click(),100); }
-    else { setTimeout(()=>startLive(),100); }
+    // barcode/qr camera starts via videoRefCb when video element renders
   };
 
   const sBtn = (m, label, icon, clr) => (
@@ -189,7 +202,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
     </div>
     <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{display:"none"}}/>
     {mode&&mode!=="nameplate"&&(<div style={{position:"relative",borderRadius:8,overflow:"hidden",background:"#000",marginBottom:8}}>
-      <video ref={videoRef} playsInline muted style={{width:"100%",maxHeight:260,objectFit:"cover",display:"block"}}/>
+      <video ref={videoRefCb} playsInline muted style={{width:"100%",maxHeight:260,objectFit:"cover",display:"block"}}/>
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:mode==="qr"?160:"70%",height:mode==="qr"?160:80,border:`2px solid ${mode==="qr"?B.purple:B.amber}`,borderRadius:8,boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)"}}/>
       <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center"}}>
         <button onClick={()=>fileRef.current?.click()} style={{padding:"5px 14px",background:"rgba(255,255,255,0.9)",color:"#000",border:"none",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer"}}>Photo Instead</button>
@@ -300,14 +313,29 @@ export default function HardinLister() {
       if(v(d.cooling_class)) n.cooling_class=v(d.cooling_class);
       if(v(d.liquid_type)) n.liquid_type=v(d.liquid_type);
       if(v(d.bus_rating)) n.bus_rating=v(d.bus_rating);
+      // Cross-fill: if no model but have catalog, use catalog as model
+      if(!n.model_number && n.catalog_number) n.model_number=n.catalog_number;
+      // Cross-fill: if no catalog but have model, use model as catalog
+      if(!n.catalog_number && n.model_number) n.catalog_number=n.model_number;
       return n;
     });
   };
 
   const handleBarcode = (val, fmt) => {
     if(fmt==="qr_code"&&val.startsWith("http")){window.open(val,"_blank");sf("condition_notes",(form.condition_notes?form.condition_notes+"\n":"")+"QR: "+val);}
-    else sf("catalog_number",val);
+    else { sf("catalog_number",val); sf("model_number",val); }
   };
+
+  // Auto-fetch comps after scan populates form
+  useEffect(() => {
+    if (!scanResult) return;
+    // Wait for form state to settle, then auto-pull comps
+    const timer = setTimeout(() => {
+      fetchEbay();
+      fetchWeb();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [scanResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sq=buildQ();
   const hasEq=form.equipment_type&&(form.manufacturer||form.catalog_number);
