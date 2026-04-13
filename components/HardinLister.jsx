@@ -238,8 +238,8 @@ export default function HardinLister() {
     return p.join(" ");
   },[form]);
 
-  const fetchEbay=async()=>{const q=buildQ();if(!q)return;setLoading(p=>({...p,ebay:true}));setErrors(p=>({...p,ebay:null}));try{const r=await fetch(FN("ebay-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});const d=await r.json();if(d.error)setErrors(p=>({...p,ebay:d.error}));setEbayComps(d);}catch(e){setErrors(p=>({...p,ebay:String(e)}));}setLoading(p=>({...p,ebay:false}));};
-  const fetchWeb=async()=>{const q=buildQ();if(!q)return;setLoading(p=>({...p,web:true}));setErrors(p=>({...p,web:null}));try{const r=await fetch(FN("web-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,num:10})});const d=await r.json();if(d.error)setErrors(p=>({...p,web:d.error}));setWebComps(d);}catch(e){setErrors(p=>({...p,web:String(e)}));}setLoading(p=>({...p,web:false}));};
+  const fetchEbay=async(qOverride)=>{const q=qOverride||buildQ();if(!q)return;setLoading(p=>({...p,ebay:true}));setErrors(p=>({...p,ebay:null}));try{const r=await fetch(FN("ebay-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});const d=await r.json();if(d.error)setErrors(p=>({...p,ebay:d.error}));setEbayComps(d);}catch(e){setErrors(p=>({...p,ebay:String(e)}));}setLoading(p=>({...p,ebay:false}));};
+  const fetchWeb=async(qOverride)=>{const q=qOverride||buildQ();if(!q)return;setLoading(p=>({...p,web:true}));setErrors(p=>({...p,web:null}));try{const r=await fetch(FN("web-comps"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q,num:10})});const d=await r.json();if(d.error)setErrors(p=>({...p,web:d.error}));setWebComps(d);}catch(e){setErrors(p=>({...p,web:String(e)}));}setLoading(p=>({...p,web:false}));};
   const genListing=async()=>{if(!form.equipment_type)return;setLoading(p=>({...p,listing:true}));setErrors(p=>({...p,listing:null}));try{const cp=ebayComps?.stats?{low:ebayComps.stats.low,median:ebayComps.stats.median,high:ebayComps.stats.high,count:ebayComps.stats.count}:null;const r=await fetch(FN("generate-listing"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,comp_prices:cp})});const d=await r.json();if(d.error)setErrors(p=>({...p,listing:d.error}));else setListing(d);}catch(e){setErrors(p=>({...p,listing:String(e)}));}setLoading(p=>({...p,listing:false}));};
 
   const handleCopy=(t,id)=>{copyText(t);setCopied(id);setTimeout(()=>setCopied(null),2000);};
@@ -329,12 +329,27 @@ export default function HardinLister() {
   // Auto-fetch comps after scan populates form
   useEffect(() => {
     if (!scanResult) return;
-    // Wait for form state to settle, then auto-pull comps
-    const timer = setTimeout(() => {
-      fetchEbay();
-      fetchWeb();
-    }, 500);
-    return () => clearTimeout(timer);
+    // Build query directly from scan data (don't rely on form state which may be stale)
+    const d = scanResult;
+    const parts = [];
+    if (d.manufacturer) parts.push(String(d.manufacturer).split("/")[0].trim());
+    if (d.equipment_type) parts.push(String(d.equipment_type));
+    if (d.catalog_number && d.catalog_number !== "null") parts.push(String(d.catalog_number));
+    else if (d.model_number && d.model_number !== "null") parts.push(String(d.model_number));
+    if (d.amperage_rating && d.amperage_rating !== "null") parts.push(String(d.amperage_rating).replace(/\s*A$/i,"") + "A");
+    else if (d.frame_size && d.frame_size !== "null") parts.push(String(d.frame_size).replace(/\s*A$/i,"") + "A");
+    else if (d.kva_rating && d.kva_rating !== "null") parts.push(String(d.kva_rating) + "KVA");
+    if (d.voltage_rating && d.voltage_rating !== "null") {
+      const vStr = String(d.voltage_rating);
+      // Use the most common voltage if multiple listed
+      const firstV = vStr.split(/[/,]/)[0].replace(/[^\d]/g,"");
+      if (firstV) parts.push(firstV + "V");
+    }
+    const q = parts.join(" ");
+    if (q) {
+      fetchEbay(q);
+      fetchWeb(q);
+    }
   }, [scanResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sq=buildQ();
