@@ -494,6 +494,7 @@ export default function HardinLister() {
           </div>
         </div>
         {sq&&<div style={{background:B.card,padding:"6px 12px",borderRadius:6,fontSize:12,color:B.muted,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",border:`1px solid ${B.border}`}}><span style={{color:B.accent}}>{sq}</span></div>}
+        <button onClick={()=>{setForm({equipment_type:"",manufacturer:"",model_number:"",catalog_number:"",serial_number:"",voltage_rating:"",voltage_secondary:"",amperage_rating:"",kva_rating:"",phase:"3",frequency:"60",grade:"B",condition_notes:"",year_manufactured:"",weight_lbs:"",interrupting_rating:"",frame_size:"",trip_rating:"",breaker_type:"",bus_rating:"",cooling_class:"",liquid_type:"",winding_material:""});setEbayComps(null);setWebComps(null);setListing(null);setPhotos([]);setScanResult(null);setErrors({});setTab("entry");}} style={{padding:"8px 16px",background:B.green,color:"#fff",border:"none",borderRadius:6,fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>+ New</button>
       </div>
 
       <div style={{display:"flex",borderBottom:`1px solid ${B.border}`,background:B.card,flexWrap:"wrap"}}>
