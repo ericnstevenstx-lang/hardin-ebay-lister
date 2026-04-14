@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 
 const SUPABASE_URL = "https://ulyycjtrshpsjpvbztkr.supabase.co";
 const FN = (name) => `${SUPABASE_URL}/functions/v1/${name}`;
+const SK = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVseXljanRyc2hwc2pwdmJ6dGtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMzg1NzAsImV4cCI6MjA5MDcxNDU3MH0.UYwCdYrdy20xl_hCkO8t4CAB16vBHj-oMdflDv1XlVE";
 
 const B = {
   green: "#58815a", greenLight: "#6a9b6c", greenDark: "#3d5e3f",
@@ -55,7 +56,7 @@ function CompRow({comp,source}) {
     {comp.image&&<img src={comp.image} alt="" style={{width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0}}/>}
     <div style={{flex:1,minWidth:0}}>
       <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:B.text}}>{comp.title}</div>
-      <div style={{fontSize:11,color:B.muted}}>{source==="ebay"?(comp.seller||"eBay"):(comp.displayLink||"Web")}{comp.condition&&` · ${comp.condition}`}</div>
+      <div style={{fontSize:11,color:B.muted}}>{source==="ebay"?(comp.seller||"eBay"):(comp.displayLink||"Web")}{comp.condition&&` . ${comp.condition}`}</div>
     </div>
     <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600,color:B.accent,flexShrink:0}}>{comp.price?`$${Number(comp.price).toLocaleString()}`:"Quote"}</div>
     <a href={source==="ebay"?comp.itemUrl:comp.link} target="_blank" rel="noopener noreferrer" style={{color:B.blue,fontSize:11,flexShrink:0,textDecoration:"none"}}>View</a>
@@ -102,7 +103,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       const d = await r.json();
       if (d.error) { setStatus(`Error: ${d.error}`); return; }
       onNameplate(d);
-      setStatus("✓ Nameplate scanned. Form auto-filled.");
+      setStatus("[OK] Nameplate scanned. Form auto-filled.");
       setTimeout(() => { setMode(null); setStatus(null); setPreview(null); }, 2500);
     } catch(e) { setStatus(`Error: ${e.message}`); }
   };
@@ -116,7 +117,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       const res = await det.detect(src);
       if (!res.length) { setStatus("No code detected. Try again or adjust angle."); return; }
       onBarcode(res[0].rawValue, res[0].format);
-      setStatus(`✓ ${res[0].format}: ${res[0].rawValue}`);
+      setStatus(`[OK] ${res[0].format}: ${res[0].rawValue}`);
       setTimeout(() => { setMode(null); setStatus(null); setPreview(null); }, 2500);
     } catch(e) { setStatus(`Error: ${e.message}`); }
   };
@@ -152,7 +153,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
         if (!videoRef.current||!streamRef.current) return;
         try {
           const r = await det.detect(videoRef.current);
-          if (r.length) { stopCam(); onBarcode(r[0].rawValue,r[0].format); setStatus(`✓ ${r[0].format}: ${r[0].rawValue}`); setTimeout(()=>{setMode(null);setStatus(null);},2500); return; }
+          if (r.length) { stopCam(); onBarcode(r[0].rawValue,r[0].format); setStatus(`[OK] ${r[0].format}: ${r[0].rawValue}`); setTimeout(()=>{setMode(null);setStatus(null);},2500); return; }
         } catch{}
         animRef.current = requestAnimationFrame(tick);
       };
@@ -209,7 +210,7 @@ function ScannerPanel({ onNameplate, onBarcode }) {
       </div>
     </div>)}
     {preview&&mode==="nameplate"&&<div style={{borderRadius:8,overflow:"hidden",marginBottom:8}}><img src={preview} alt="" style={{width:"100%",maxHeight:200,objectFit:"contain",background:"#000",display:"block"}}/></div>}
-    {status&&<div style={{padding:"8px 14px",borderRadius:6,fontSize:13,fontWeight:500,background:status.startsWith("✓")?`${B.green}22`:status.startsWith("Error")?`${B.red}22`:`${B.amber}22`,color:status.startsWith("✓")?B.accent:status.startsWith("Error")?B.red:B.amber,border:`1px solid ${status.startsWith("✓")?B.green:status.startsWith("Error")?B.red:B.amber}33`}}>{status}</div>}
+    {status&&<div style={{padding:"8px 14px",borderRadius:6,fontSize:13,fontWeight:500,background:status.startsWith("[OK]")?`${B.green}22`:status.startsWith("Error")?`${B.red}22`:`${B.amber}22`,color:status.startsWith("[OK]")?B.accent:status.startsWith("Error")?B.red:B.amber,border:`1px solid ${status.startsWith("[OK]")?B.green:status.startsWith("Error")?B.red:B.amber}33`}}>{status}</div>}
   </div>);
 }
 
@@ -224,7 +225,61 @@ export default function HardinLister() {
   const [listing, setListing] = useState(null);
   const [errors, setErrors] = useState({});
   const [scanResult, setScanResult] = useState(null);
+  const [photos, setPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const photoRef = useRef(null);
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // Build folder name: {Type}_{Serial_Last4}
+  const photoFolder = () => {
+    const t = (form.equipment_type || "Equipment").replace(/ *\(.*\)/, "").replace(/[^a-zA-Z0-9]/g, "_");
+    const s = (form.serial_number || form.catalog_number || form.model_number || "0000").slice(-4);
+    return `${t}_${s}`;
+  };
+
+  // Compress and upload photo
+  const uploadPhoto = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      // Compress
+      const dataUrl = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const max = 1600;
+            let w = img.width, h = img.height;
+            if (w > max || h > max) { const r = Math.min(max/w, max/h); w = Math.round(w*r); h = Math.round(h*r); }
+            const c = document.createElement("canvas"); c.width = w; c.height = h;
+            c.getContext("2d").drawImage(img, 0, 0, w, h);
+            res(c.toDataURL("image/jpeg", 0.82));
+          };
+          img.onerror = rej;
+          img.src = e.target.result;
+        };
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      // Convert to blob
+      const resp = await fetch(dataUrl);
+      const blob = await resp.blob();
+      // Upload to Supabase Storage
+      const folder = photoFolder();
+      const fname = `${folder}/photo_${Date.now()}.jpg`;
+      const upResp = await fetch(`${SUPABASE_URL}/storage/v1/object/listing-photos/${fname}`, {
+        method: "POST",
+        headers: { apikey: SK, Authorization: `Bearer ${SK}`, "Content-Type": "image/jpeg" },
+        body: blob,
+      });
+      if (!upResp.ok) throw new Error(`Upload failed: ${upResp.status}`);
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/listing-photos/${fname}`;
+      setPhotos(prev => [...prev, { url: publicUrl, name: fname }]);
+    } catch (e) {
+      setErrors(p => ({ ...p, photo: String(e) }));
+    }
+    setUploading(false);
+  };
 
   const buildQ = useCallback(()=>{
     const p=[];
@@ -258,7 +313,7 @@ export default function HardinLister() {
   const genListing=async()=>{if(!form.equipment_type)return;setLoading(p=>({...p,listing:true}));setErrors(p=>({...p,listing:null}));try{const cp=ebayComps?.stats?{low:ebayComps.stats.low,median:ebayComps.stats.median,high:ebayComps.stats.high,count:ebayComps.stats.count}:null;const r=await fetch(FN("generate-listing"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,comp_prices:cp})});const d=await r.json();if(d.error)setErrors(p=>({...p,listing:d.error}));else setListing(d);}catch(e){setErrors(p=>({...p,listing:String(e)}));}setLoading(p=>({...p,listing:false}));};
 
   const handleCopy=(t,id)=>{copyText(t);setCopied(id);setTimeout(()=>setCopied(null),2000);};
-  const CopyBtn=({text,id,label})=>(<button onClick={()=>handleCopy(text,id)} style={{padding:"4px 10px",background:copied===id?B.green:B.border,color:"#fff",border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>{copied===id?"✓ Copied":label||"Copy"}</button>);
+  const CopyBtn=({text,id,label})=>(<button onClick={()=>handleCopy(text,id)} style={{padding:"4px 10px",background:copied===id?B.green:B.border,color:"#fff",border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>{copied===id?"[OK] Copied":label||"Copy"}</button>);
 
   const handleNameplate = (d) => {
     // Save raw scan result for display
@@ -423,6 +478,8 @@ export default function HardinLister() {
     (ebayComps?.comps||[]).forEach((c,i)=>rows.push({Section:`eBay Comp ${i+1}`,Field:c.title,Value:c.price||"N/A"}));
     // Dealer comp details
     (webComps?.comps||[]).forEach((c,i)=>rows.push({Section:`Dealer Comp ${i+1}`,Field:c.title,Value:c.price||"Quote"}));
+    // Photos
+    if(photos.length>0){rows.push({Section:"",Field:"",Value:""});photos.forEach((p,i)=>rows.push({Section:`Photo ${i+1}`,Field:p.name,Value:p.url}));}
     downloadCSV(rows, `Hardin_Full_Report_${eqLabel()}_${ts()}.csv`);
   };
 
@@ -443,7 +500,7 @@ export default function HardinLister() {
         <TabB active={tab==="entry"} onClick={()=>setTab("entry")}>Equipment</TabB>
         <TabB active={tab==="comps"} onClick={()=>setTab("comps")} badge={ebayComps?.comps?.length||0}>eBay Comps</TabB>
         <TabB active={tab==="web"} onClick={()=>setTab("web")} badge={webComps?.comps?.length||0}>Dealer Comps</TabB>
-        <TabB active={tab==="listing"} onClick={()=>setTab("listing")}>{listing?"✓ ":""}Listing</TabB>
+        <TabB active={tab==="listing"} onClick={()=>setTab("listing")}>{listing?"[OK] ":""}Listing</TabB>
         <TabB active={tab==="pricing"} onClick={()=>setTab("pricing")}>Pricing</TabB>
       </div>
 
@@ -484,6 +541,32 @@ export default function HardinLister() {
             {(form.equipment_type==="Switchgear"||form.equipment_type==="Panelboard")&&<Inp label="Bus (A)" value={form.bus_rating} onChange={v=>sf("bus_rating",v)}/>}
             <div style={{gridColumn:"1 / -1"}}><label style={{fontSize:10,color:B.muted,textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:3}}>Condition Notes</label><textarea value={form.condition_notes} onChange={e=>sf("condition_notes",e.target.value)} placeholder="Missing parts, damage, test results..." rows={3} style={{width:"100%",padding:"8px 10px",background:B.bg,border:`1px solid ${B.border}`,borderRadius:4,color:B.text,fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical",boxSizing:"border-box"}}/></div>
           </div>
+
+          {/* Photo Upload */}
+          <div style={{marginTop:16,padding:12,background:B.card,borderRadius:8,border:`1px solid ${B.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:11,color:B.muted,textTransform:"uppercase",letterSpacing:0.8}}>Photos ({photos.length})</span>
+              <label style={{padding:"6px 14px",background:B.green,color:"#fff",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",opacity:uploading?0.5:1}}>
+                {uploading?"Uploading...":"+ Add Photo"}
+                <input ref={photoRef} type="file" accept="image/*" capture="environment" multiple onChange={e=>{Array.from(e.target.files||[]).forEach(f=>uploadPhoto(f));e.target.value="";}} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            </div>
+            {errors.photo&&<div style={{fontSize:11,color:B.red,marginBottom:6}}>{errors.photo}</div>}
+            {photos.length>0?(
+              <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+                {photos.map((p,pi)=>(
+                  <div key={pi} style={{position:"relative",flexShrink:0}}>
+                    <img src={p.url} alt={`Photo ${pi+1}`} style={{width:80,height:80,objectFit:"cover",borderRadius:6,border:`1px solid ${B.border}`}}/>
+                    <button onClick={()=>setPhotos(prev=>prev.filter((_,j)=>j!==pi))} style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:9,background:B.red,color:"#fff",border:"none",fontSize:10,cursor:"pointer",lineHeight:"18px",textAlign:"center"}}>x</button>
+                  </div>
+                ))}
+              </div>
+            ):(
+              <div style={{fontSize:12,color:B.muted,textAlign:"center",padding:12}}>No photos yet. Tap + Add Photo to capture equipment images.</div>
+            )}
+            {photos.length>0&&<div style={{fontSize:10,color:B.muted,marginTop:6}}>Stored: listing-photos/{photoFolder()}/</div>}
+          </div>
+
           <div style={{display:"flex",gap:10,marginTop:20,flexWrap:"wrap"}}>
             <ActBtn onClick={()=>{fetchEbay();fetchWeb();setTab("comps");}} disabled={!hasEq||loading.ebay} color={B.green}>{loading.ebay?"Searching...":"Pull Comps"}</ActBtn>
             <ActBtn onClick={()=>{genListing();setTab("listing");}} disabled={!hasEq||loading.listing} color={B.purple}>{loading.listing?"Generating...":"Generate Listing"}</ActBtn>
@@ -548,7 +631,7 @@ export default function HardinLister() {
           </div>}
         </div>)}
       </div>
-      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Electrical Group · Dallas, TX · Powered by WES Platform</div>
+      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Electrical Group . Dallas, TX . Powered by WES Platform</div>
     </div>
   );
 }
