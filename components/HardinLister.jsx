@@ -484,12 +484,12 @@ export default function HardinLister() {
   };
 
   return (
-    <div style={{fontFamily:"'Segoe UI',-apple-system,sans-serif",background:B.bg,color:B.text,minHeight:"100vh",maxWidth:920,margin:"0 auto"}}>
+    <div style={{fontFamily:"'Segoe UI',-apple-system,sans-serif",background:B.bg,color:B.text,minHeight:"100vh",maxWidth:920,margin:"0 auto",overflow:"hidden"}}>
       <div style={{padding:"14px 20px",borderBottom:`2px solid ${B.green}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:`linear-gradient(135deg,${B.bg} 0%,${B.card} 100%)`}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <Logo size={42}/>
           <div>
-            <div style={{fontSize:18,fontWeight:800,letterSpacing:0.5,lineHeight:1.1}}><span style={{color:B.green}}>HARDIN</span><span style={{color:B.text,fontWeight:400,fontSize:14,marginLeft:6}}>ELECTRICAL GROUP</span></div>
+            <div style={{fontSize:18,fontWeight:800,letterSpacing:0.5,lineHeight:1.1}}><span style={{color:B.green}}>HARDIN</span><span style={{color:B.text,fontWeight:400,fontSize:14,marginLeft:6}}>POWER GROUP</span></div>
             <div style={{fontSize:11,color:B.muted,marginTop:1,letterSpacing:1.5,textTransform:"uppercase"}}>eBay Lister + Comp Pricing + SEO Generator</div>
           </div>
         </div>
@@ -513,16 +513,16 @@ export default function HardinLister() {
               <span style={{fontSize:12,fontWeight:600,color:B.accent}}>Scan Results (raw OCR data)</span>
               <button onClick={()=>setScanResult(null)} style={{padding:"3px 8px",background:B.border,color:B.muted,border:"none",borderRadius:4,fontSize:11,cursor:"pointer"}}>Dismiss</button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:4,fontSize:12,overflow:"hidden"}}>
               {Object.entries(scanResult).filter(([,val])=>val&&val!=="null").map(([key,val])=>(
-                <div key={key} style={{display:"flex",gap:6}}>
-                  <span style={{color:B.muted,minWidth:100}}>{key}:</span>
-                  <span style={{color:B.text,fontFamily:"'JetBrains Mono',monospace",fontSize:11}}>{String(val)}</span>
+                <div key={key} style={{display:"flex",gap:6,minWidth:0}}>
+                  <span style={{color:B.muted,minWidth:90,flexShrink:0,fontSize:11}}>{key}:</span>
+                  <span style={{color:B.text,fontFamily:"'JetBrains Mono',monospace",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{String(val)}</span>
                 </div>
               ))}
             </div>
           </div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:12}}>
             <Sel label="Equipment Type" value={form.equipment_type} onChange={v=>sf("equipment_type",v)} options={EQ_TYPES} style={{gridColumn:"1 / -1"}}/>
             <Sel label="Manufacturer" value={form.manufacturer} onChange={v=>sf("manufacturer",v)} options={MFRS}/>
             <Sel label="Grade" value={form.grade} onChange={v=>sf("grade",v)} options={GRADES.map(g=>({value:g.value,label:g.label}))}/>
@@ -607,7 +607,7 @@ export default function HardinLister() {
             </div>
             {listing.item_specifics&&<div style={{background:B.card,borderRadius:8,padding:16,border:`1px solid ${B.border}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:11,color:B.muted}}>ITEM SPECIFICS</span><CopyBtn text={Object.entries(listing.item_specifics).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join("\n")} id="sp"/></div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>{Object.entries(listing.item_specifics).filter(([,v])=>v).map(([k,v])=><div key={k} style={{display:"flex",gap:8,fontSize:13}}><span style={{color:B.muted,minWidth:80}}>{k}:</span><span style={{color:B.text}}>{v}</span></div>)}</div>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:6}}>{Object.entries(listing.item_specifics).filter(([,v])=>v).map(([k,v])=><div key={k} style={{display:"flex",gap:8,fontSize:13,minWidth:0}}><span style={{color:B.muted,minWidth:80,flexShrink:0}}>{k}:</span><span style={{color:B.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v}</span></div>)}</div>
             </div>}
             {listing.search_keywords?.length>0&&<div style={{background:B.card,borderRadius:8,padding:16,border:`1px solid ${B.border}`}}><div style={{fontSize:11,color:B.muted,marginBottom:8}}>SEO KEYWORDS</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{listing.search_keywords.map((kw,i)=><span key={i} style={{padding:"4px 10px",background:B.border,borderRadius:12,fontSize:12,color:B.muted}}>{kw}</span>)}</div></div>}
             {listing.suggested_price&&<div style={{background:B.card,borderRadius:8,padding:16,border:`1px solid ${B.border}`}}><div style={{fontSize:11,color:B.muted,marginBottom:8}}>AI PRICE (Grade {form.grade})</div><div style={{display:"flex",gap:10}}><PriceTag label="Low" value={listing.suggested_price.low} color={B.red}/><PriceTag label="Target" value={listing.suggested_price.mid} color={B.accent}/><PriceTag label="High" value={listing.suggested_price.high} color={B.blue}/></div>{listing.suggested_price.reasoning&&<div style={{marginTop:8,fontSize:12,color:B.muted,fontStyle:"italic"}}>{listing.suggested_price.reasoning}</div>}</div>}
@@ -617,7 +617,7 @@ export default function HardinLister() {
 
         {tab==="pricing"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:16}}>Price Analysis: Grade {form.grade}</h3><DlBtn onClick={exportFullReport} disabled={!ebayComps?.stats&&!listing}>Full Report CSV</DlBtn></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
             {[{t:"eBay",c:B.green,d:ebayComps?.stats,lk:"ebay",f:["low","median","high"],x:ebayComps?.stats?.count?`${ebayComps.stats.count} listings`:null},{t:"Dealers",c:B.purple,d:webComps?.stats,lk:"web",f:["low","median","high"],x:webComps?.stats?.count?`${webComps.stats.count} priced`:null},{t:"AI",c:B.accent,d:listing?.suggested_price,lk:"listing",f:["low","mid","high"]}].map(col=><div key={col.t} style={{background:B.card,borderRadius:8,padding:16,border:`1px solid ${B.border}`}}>
               <div style={{fontSize:12,color:col.c,fontWeight:600,marginBottom:12}}>{col.t}</div>
               {col.d?<>{col.f.map(f=><div key={f} style={{marginBottom:8}}><PriceTag label={f==="mid"?"Target":f} value={col.d[f]} color={f==="low"?B.red:f==="high"?B.blue:B.amber}/></div>)}{col.x&&<div style={{fontSize:11,color:B.muted,textAlign:"center"}}>{col.x}</div>}</>:<div style={{color:B.muted,fontSize:12,textAlign:"center",padding:20}}>{loading[col.lk]?"Loading...":"No data"}</div>}
@@ -632,7 +632,7 @@ export default function HardinLister() {
           </div>}
         </div>)}
       </div>
-      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Electrical Group . Dallas, TX . Powered by WES Platform</div>
+      <div style={{padding:"12px 20px",borderTop:`1px solid ${B.border}`,textAlign:"center",fontSize:11,color:B.muted}}>Hardin Power Group . Dallas, TX . Powered by Hardin</div>
     </div>
   );
 }
